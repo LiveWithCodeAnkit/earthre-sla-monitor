@@ -1,0 +1,12 @@
+name = "sla-monitor"
+main = "src/index.ts"
+compatibility_date = "2024-12-05"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "sla-monitor"
+database_id = "placeholder-update-after-d1-create"
+
+[vars]
+ENVIRONMENT = "development"

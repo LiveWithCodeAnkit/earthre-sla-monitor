@@ -1,0 +1,24 @@
+# ── Dependencies ────────────────────────────────────────────────────────────
+node_modules/
+frontend/node_modules/
+
+# ── Build output ─────────────────────────────────────────────────────────────
+# Cloudflare Pages deploys from the built dist; no need to commit it.
+frontend/dist/
+
+# ── Wrangler local dev state ─────────────────────────────────────────────────
+# .wrangler/state/ contains local D1 SQLite files and cache used by `wrangler dev`.
+# These are machine-specific and should not be committed.
+.wrangler/state/
+.wrangler/tmp/
+
+# ── Environment files ─────────────────────────────────────────────────────────
+# .env.production contains the live Worker URL — safe to commit (no secrets),
+# but listed here as a reminder; remove this line if you want it tracked.
+# frontend/.env.production
+
+# ── OS / editor noise ────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.suo
+*.user
