@@ -1,13 +1,10 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import { fetchStats, type StatsResult } from "../api";
+import AppShell from "../components/AppShell";
 import StatsPanel from "../components/StatsPanel";
 import DateFilter, { type FilterValues } from "../components/DateFilter";
 import LogsTable from "../components/LogsTable";
 
-// The 5 known service IDs — used to populate the service dropdown.
-// These are discovered from data at runtime and fall back to this static list
-// so the filter works even before any upload on a fresh session.
 const KNOWN_SERVICES = [
   "svc-auth",
   "svc-notify",
@@ -20,11 +17,8 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<StatsResult | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
   const [statsError, setStatsError] = useState<string | null>(null);
-
-  // Shared filter state — drives both the stats panel and the logs table
   const [filters, setFilters] = useState<FilterValues>({});
 
-  // Derive service list from loaded stats (or fall back to KNOWN_SERVICES)
   const serviceIds =
     stats && stats.services.length > 0
       ? stats.services.map((s) => s.service_id).sort()
@@ -33,48 +27,58 @@ export default function DashboardPage() {
   useEffect(() => {
     setStatsLoading(true);
     setStatsError(null);
-
     fetchStats(filters)
       .then(setStats)
       .catch((e) => setStatsError(e instanceof Error ? e.message : "Failed to load stats"))
       .finally(() => setStatsLoading(false));
   }, [filters]);
 
+  const overallCompliant = stats?.overall.sla_compliant ?? true;
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Top nav */}
-      <nav className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 flex items-center justify-between">
-        <h1 className="font-bold text-gray-900">SLA Monitor</h1>
-        <Link
-          to="/upload"
-          className="text-sm text-blue-600 hover:text-blue-700 hover:underline"
-        >
-          ← Upload CSV
-        </Link>
-      </nav>
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-4">
-
-        {/* Filters — shared between stats panel and logs table */}
-        <DateFilter
-          services={serviceIds}
-          onChange={setFilters}
-        />
-
-        {/* Stats error */}
+    <AppShell
+      status={
+        stats ? (
+          <div
+            className={`hidden sm:inline-flex items-center gap-2 text-xs font-semibold px-2.5 py-1 rounded-full border transition-colors ${
+              overallCompliant
+                ? "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-300 dark:border-emerald-500/30 text-emerald-800 dark:text-emerald-300"
+                : "bg-rose-50 dark:bg-rose-500/10 border-rose-300 dark:border-rose-500/30 text-rose-800 dark:text-rose-300"
+            }`}
+          >
+            <span
+              className={`w-2 h-2 rounded-full ${
+                overallCompliant
+                  ? "bg-emerald-500 dark:bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]"
+                  : "bg-rose-500 dark:bg-rose-400 shadow-[0_0_8px_rgba(244,63,94,0.6)]"
+              }`}
+            />
+            <span>{overallCompliant ? "Fleet SLA Compliant" : "Fleet SLA Breach"}</span>
+          </div>
+        ) : undefined
+      }
+      toolbar={<DateFilter services={serviceIds} onChange={setFilters} />}
+    >
+      <main className="max-w-7xl mx-auto w-full px-4 sm:px-6 py-6 sm:py-8 space-y-8">
+        {/* Error Notification */}
         {statsError && !statsLoading && (
-          <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-red-700 text-sm">
-            Stats unavailable: {statsError}
+          <div
+            role="alert"
+            className="rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/30 p-4 text-sm text-rose-700 dark:text-rose-300 flex items-center gap-2.5"
+          >
+            <span className="text-lg">⚠️</span>
+            <div>
+              <span className="font-bold">Stats Pipeline Error:</span> {statsError}
+            </div>
           </div>
         )}
 
-        {/* Collapsible stats panel */}
+        {/* Aggregated KPI Overview & Service Cards */}
         <StatsPanel stats={stats} loading={statsLoading} />
 
-        {/* Logs table — uses same filters */}
+        {/* Paginated Telemetry Log Table */}
         <LogsTable filters={filters} />
-
-      </div>
-    </div>
+      </main>
+    </AppShell>
   );
 }
