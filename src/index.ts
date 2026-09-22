@@ -42,10 +42,11 @@ import type { Env } from "./types";
  * has no session state to protect); the browser enforces CORS on its side.
  */
 function getCorsHeaders(origin: string | null): Record<string, string> {
-  const PAGES_PROJECT = "sla-dashboard"; // update if you used a different project name
+  // Actual Pages hostname from `wrangler pages project create` (may include a suffix).
+  const PAGES_PROJECT = "sla-dashboard-55v";
 
   function isAllowed(o: string): boolean {
-    if (o === "http://localhost:5173") return true;
+    if (o === "http://localhost:5174") return true;
     if (o === `https://${PAGES_PROJECT}.pages.dev`) return true;
     // Cloudflare preview URLs: https://<hash>.<project>.pages.dev
     if (o.endsWith(`.${PAGES_PROJECT}.pages.dev`) && o.startsWith("https://")) return true;
@@ -222,6 +223,8 @@ async function handleLogs(
 
   const service = url.searchParams.get("service") ?? undefined;
   const page = parseInt(url.searchParams.get("page") ?? "1", 10);
+  const pageSizeRaw = url.searchParams.get("pageSize");
+  const pageSize = pageSizeRaw ? parseInt(pageSizeRaw, 10) : undefined;
 
   // Support both ?date=YYYY-MM-DD (single day) and ?from=...&to=... (range).
   // If both are provided, from/to take precedence over date.
@@ -233,7 +236,7 @@ async function handleLogs(
     url.searchParams.get("to") ??
     (dateParam ? `${dateParam}T23:59:59.999Z` : undefined);
 
-  const result = await queryLogs(env.DB, { service, from, to, page });
+  const result = await queryLogs(env.DB, { service, from, to, page, pageSize });
   return json(result, 200, corsHeaders);
 }
 

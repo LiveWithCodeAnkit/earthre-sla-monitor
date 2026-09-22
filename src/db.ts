@@ -12,8 +12,10 @@ import type { CleanRow } from "./types";
 // Constants
 // ---------------------------------------------------------------------------
 
-/** Number of rows per page for the /api/logs endpoint. */
-export const PAGE_SIZE = 50;
+/** Default / clamp bounds for /api/logs page size. */
+export const DEFAULT_PAGE_SIZE = 25;
+export const MIN_PAGE_SIZE = 5;
+export const MAX_PAGE_SIZE = 200;
 
 // ---------------------------------------------------------------------------
 // Shared row types
@@ -145,7 +147,8 @@ export async function insertUpload(
  *     If both `date` and `from`/`to` are provided, `from`/`to` take precedence.
  *
  * Pagination:
- *   - page is 1-indexed. pageSize is fixed at PAGE_SIZE (50).
+ *   - page is 1-indexed.
+ *   - pageSize is client-chosen (5–200), default DEFAULT_PAGE_SIZE (25).
  *   - We run a COUNT(*) query first so the UI can show "Page X of Y".
  *     D1 executes both in sequence; the cost is minimal for this dataset size.
  */
@@ -156,10 +159,16 @@ export async function queryLogs(
     from?: string;
     to?: string;
     page?: number;
+    pageSize?: number;
   }
 ): Promise<LogsResult> {
   const page = Math.max(1, params.page ?? 1);
-  const offset = (page - 1) * PAGE_SIZE;
+  const rawSize = params.pageSize ?? DEFAULT_PAGE_SIZE;
+  const pageSize = Math.min(
+    MAX_PAGE_SIZE,
+    Math.max(MIN_PAGE_SIZE, Number.isFinite(rawSize) ? Math.floor(rawSize) : DEFAULT_PAGE_SIZE)
+  );
+  const offset = (page - 1) * pageSize;
 
   const conditions: string[] = [];
   const bindings: (string | number)[] = [];
@@ -197,14 +206,14 @@ export async function queryLogs(
        ORDER BY ts_utc DESC
        LIMIT ? OFFSET ?`
     )
-    .bind(...bindings, PAGE_SIZE, offset)
+    .bind(...bindings, pageSize, offset)
     .all<LogRow>();
 
   return {
     rows: dataResult.results,
     total,
     page,
-    pageSize: PAGE_SIZE,
+    pageSize,
   };
 }
 

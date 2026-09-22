@@ -110,6 +110,7 @@ export async function fetchLogs(params: {
   to?: string;
   date?: string;
   page?: number;
+  pageSize?: number;
 }): Promise<LogsResult> {
   const url = new URL(`${WORKER_URL}/api/logs`);
   if (params.service) url.searchParams.set("service", params.service);
@@ -117,6 +118,7 @@ export async function fetchLogs(params: {
   if (params.from) url.searchParams.set("from", params.from);
   if (params.to) url.searchParams.set("to", params.to);
   url.searchParams.set("page", String(params.page ?? 1));
+  if (params.pageSize) url.searchParams.set("pageSize", String(params.pageSize));
 
   const res = await fetch(url.toString());
   if (!res.ok) throw new Error("Failed to fetch logs");
