@@ -6,7 +6,7 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "DB"
 database_name = "sla-monitor"
-database_id = "placeholder-update-after-d1-create"
+database_id = "db9fcabc-eb7c-4e44-8e4b-9d27e61581a6"
 
 [vars]
 ENVIRONMENT = "development"
