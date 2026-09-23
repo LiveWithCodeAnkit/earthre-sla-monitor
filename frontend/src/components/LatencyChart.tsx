@@ -169,47 +169,75 @@ function LatencyPlot({ series, days, metric, width, height, compact }: PlotProps
             strokeWidth="1"
           />
         )}
-        {series.map((s) => (
-          <g key={s.id}>
-            {metric !== "p95" && (
-              <path
-                d={linePath(s.points, (p) => p.p50, xAt, yAt)}
-                fill="none"
-                stroke={s.color}
-                strokeWidth={compact ? 1.5 : 2}
-                strokeLinejoin="round"
-              />
-            )}
-            {metric !== "p50" && (
-              <path
-                d={linePath(s.points, (p) => p.p95, xAt, yAt)}
-                fill="none"
-                stroke={s.color}
-                strokeWidth={compact ? 1.25 : 1.75}
-                strokeDasharray={metric === "both" ? "4 3" : undefined}
-                strokeLinejoin="round"
-                opacity={metric === "both" ? 0.8 : 1}
-              />
-            )}
-            {s.points.map((p, i) => {
+        {days.length === 1
+          ? series.map((s, si) => {
               const keys: ("p50" | "p95")[] =
                 metric === "both" ? ["p50", "p95"] : metric === "p50" ? ["p50"] : ["p95"];
-              return keys.map((k) => {
-                const v = pick(p, k);
+              const n = series.length * keys.length;
+              const groupW = Math.min(innerW * 0.7, Math.max(48, n * 18));
+              const barW = Math.max(8, groupW / n - 3);
+              const startX = pad.left + innerW / 2 - groupW / 2;
+              return keys.map((k, ki) => {
+                const v = pick(s.points[0], k);
                 if (v === null) return null;
+                const idx = si * keys.length + ki;
+                const x = startX + idx * (barW + 3);
+                const y = yAt(v);
                 return (
-                  <circle
-                    key={`${s.id}-${k}-${p.day}`}
-                    cx={xAt(i)}
-                    cy={yAt(v)}
-                    r={hi === i ? 3.5 : 2}
+                  <rect
+                    key={`${s.id}-${k}`}
+                    x={x}
+                    y={y}
+                    width={barW}
+                    height={Math.max(0, yAt(0) - y)}
                     fill={s.color}
+                    opacity={k === "p95" && metric === "both" ? 0.55 : 0.92}
+                    rx="2"
                   />
                 );
               });
-            })}
-          </g>
-        ))}
+            })
+          : series.map((s) => (
+              <g key={s.id}>
+                {metric !== "p95" && (
+                  <path
+                    d={linePath(s.points, (p) => p.p50, xAt, yAt)}
+                    fill="none"
+                    stroke={s.color}
+                    strokeWidth={compact ? 1.5 : 2}
+                    strokeLinejoin="round"
+                  />
+                )}
+                {metric !== "p50" && (
+                  <path
+                    d={linePath(s.points, (p) => p.p95, xAt, yAt)}
+                    fill="none"
+                    stroke={s.color}
+                    strokeWidth={compact ? 1.25 : 1.75}
+                    strokeDasharray={metric === "both" ? "4 3" : undefined}
+                    strokeLinejoin="round"
+                    opacity={metric === "both" ? 0.8 : 1}
+                  />
+                )}
+                {s.points.map((p, i) => {
+                  const keys: ("p50" | "p95")[] =
+                    metric === "both" ? ["p50", "p95"] : metric === "p50" ? ["p50"] : ["p95"];
+                  return keys.map((k) => {
+                    const v = pick(p, k);
+                    if (v === null) return null;
+                    return (
+                      <circle
+                        key={`${s.id}-${k}-${p.day}`}
+                        cx={xAt(i)}
+                        cy={yAt(v)}
+                        r={hi === i ? 3.5 : 2}
+                        fill={s.color}
+                      />
+                    );
+                  });
+                })}
+              </g>
+            ))}
       </svg>
       {hover && tip.length > 0 && (
         <div
@@ -282,7 +310,9 @@ export default function LatencyChart({ services }: { services: ServiceStats[] })
           </h3>
           {chartOpen && (
             <p className="text-[11px] text-slate-500 mt-1">
-              Shared overlay plus per-service scale · null / negative readings excluded
+              {days.length === 1
+                ? `Only ${days[0]} has data in this filter — table shows that day. A line needs 2+ UTC days (this CSV is 8–16 May 2025).`
+                : "Shared overlay plus per-service scale · null / negative readings excluded"}
             </p>
           )}
         </div>

@@ -57,7 +57,17 @@ export default function DashboardPage() {
           </div>
         ) : undefined
       }
-      toolbar={<DateFilter services={serviceIds} onChange={setFilters} />}
+      toolbar={
+        <DateFilter
+          services={serviceIds}
+          onChange={setFilters}
+          dataHint={
+            stats?.overall.from_ts && stats.overall.to_ts
+              ? `${stats.overall.from_ts.slice(0, 10)} → ${stats.overall.to_ts.slice(0, 10)} UTC in view`
+              : undefined
+          }
+        />
+      }
     >
       <main className="max-w-7xl mx-auto w-full px-4 sm:px-6 py-6 sm:py-8 space-y-8">
         {/* Error Notification */}

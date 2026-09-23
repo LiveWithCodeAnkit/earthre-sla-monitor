@@ -10,6 +10,8 @@ interface Props {
   services?: string[];
   onChange: (v: FilterValues) => void;
   initialValues?: FilterValues;
+  /** Shown so reviewers know which UTC days actually have rows. */
+  dataHint?: string;
 }
 
 const inputClass =
@@ -18,7 +20,7 @@ const inputClass =
   "transition-all shadow-sm";
 
 /** Compact toolbar filters — auto-apply on change, dark & light unified shell chrome. */
-export default function DateFilter({ services, onChange, initialValues }: Props) {
+export default function DateFilter({ services, onChange, initialValues, dataHint }: Props) {
   const [mode, setMode] = useState<"single" | "range">("single");
   const [date, setDate] = useState(initialValues?.from?.slice(0, 10) ?? "");
   const [from, setFrom] = useState(initialValues?.from?.slice(0, 10) ?? "");
@@ -72,7 +74,13 @@ export default function DateFilter({ services, onChange, initialValues }: Props)
         </button>
         <button
           type="button"
-          onClick={() => setMode("range")}
+          onClick={() => {
+            setMode("range");
+            if (!from && !to && date) {
+              setFrom(date);
+              setTo(date);
+            }
+          }}
           className={`px-3 py-1 rounded-md transition-all duration-150 ${
             mode === "range"
               ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-semibold shadow-sm"
@@ -133,7 +141,7 @@ export default function DateFilter({ services, onChange, initialValues }: Props)
       )}
 
       <span className="text-[11px] text-slate-500 ml-auto hidden lg:inline font-mono">
-        Auto-applied query
+        {dataHint ?? "Auto-applied query"}
       </span>
     </div>
   );
