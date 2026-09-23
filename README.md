@@ -3,7 +3,8 @@
 A full-stack SLA monitoring tool that ingests health-check CSVs, stores cleaned data in a cloud database, and surfaces per-service uptime, error breakdowns, latency percentiles, and incident timelines on a single-page dashboard.
 
 **Live URL:** https://sla-dashboard-55v.pages.dev  
-**Worker API:** https://sla-monitor.ay-opash.workers.dev
+**Worker API:** https://sla-monitor.ay-opash.workers.dev  
+**Health check:** https://sla-monitor.ay-opash.workers.dev/health
 
 ---
 
