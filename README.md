@@ -50,6 +50,20 @@ CSV file
 
 ---
 
+## Screens
+
+Live app: [sla-dashboard-55v.pages.dev](https://sla-dashboard-55v.pages.dev)
+
+![CSV upload](screens/uploadscreen.png)
+
+Upload a health-check CSV. Replace-on-upload is on by default so a second file does not mix into D1.
+
+![SLA dashboard](screens/dashborad.png)
+
+Fleet KPIs, per-service cards, latency by UTC day, and paginated probe logs after ingest.
+
+---
+
 ## Data Findings
 
 The CSVs look clean at first glance but contain at least nine distinct data quality issues. All are handled explicitly in `src/parser.ts` with inline comments explaining the decision.
