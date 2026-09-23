@@ -61,11 +61,11 @@ export default function StatsPanel({ stats, loading }: Props) {
             className="text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 bg-slate-100 dark:bg-slate-800/60 hover:bg-slate-200 dark:hover:bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700/60 transition-colors"
             aria-expanded={!collapsed}
           >
-            {collapsed ? "Show Service Cards ▼" : "Hide Service Cards ▲"}
+            {collapsed ? "Show stats ▼" : "Hide stats ▲"}
           </button>
         </div>
 
-        {overall && (
+        {!collapsed && overall && (
           <div className="grid grid-cols-2 lg:grid-cols-4 divide-y lg:divide-y-0 divide-x-0 sm:divide-x divide-slate-200 dark:divide-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
             <Kpi
               value={`${overall.uptime_pct.toFixed(3)}%`}
@@ -75,8 +75,8 @@ export default function StatsPanel({ stats, loading }: Props) {
             />
             <Kpi
               value={`${stats!.services.length - overall.non_compliant_services.length}/${stats!.services.length}`}
-              label="SLA Compliant Services"
-              sublabel={overall.non_compliant_services.length === 0 ? "Target 99.9% achieved" : "Breaches detected"}
+              label="Monthly SLA Compliant"
+              sublabel={overall.non_compliant_services.length === 0 ? "Calendar-month 99.9% met" : "Monthly breaches detected"}
               accent={overall.non_compliant_services.length === 0 ? "ok" : "bad"}
             />
             <Kpi
@@ -87,7 +87,7 @@ export default function StatsPanel({ stats, loading }: Props) {
             <Kpi
               value={String(incidentTotal)}
               label="Total Outage Incidents"
-              sublabel="Periods of service unavailability"
+              sublabel="Sustained bursts (≥3 down slots)"
               accent={incidentTotal === 0 ? "ok" : "warn"}
             />
           </div>

@@ -10,13 +10,13 @@ export default function UploadPage() {
   const [error, setError] = useState<string | null>(null);
   const [showReasons, setShowReasons] = useState(false);
 
-  async function handleUpload(file: File) {
+  async function handleUpload(file: File, replace: boolean) {
     setLoading(true);
     setResult(null);
     setError(null);
     setShowReasons(false);
     try {
-      const r = await uploadCSV(file);
+      const r = await uploadCSV(file, { replace });
       setResult(r);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed");
@@ -157,7 +157,7 @@ export default function UploadPage() {
               <li className="flex items-start gap-2">
                 <span className="font-semibold text-slate-800 dark:text-slate-200 shrink-0">Cleaning Rules:</span>
                 <span>
-                  Handles 9 DQ defects: timestamp normalization, microsecond units, negative latencies,
+                  Handles 9 DQ defects: timestamp normalization, seconds vs milliseconds latency units, negative latencies,
                   dual-agent cross-validation, and duplicate suppression.
                 </span>
               </li>

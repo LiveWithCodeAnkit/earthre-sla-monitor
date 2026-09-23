@@ -73,7 +73,7 @@ export default function LogsTable({ filters }: Props) {
   });
 
   const [pageSize, setPageSize] = useState(() => {
-    const s = parseInt(searchParams.get("pageSize") ?? "05", 10);
+    const s = parseInt(searchParams.get("pageSize") ?? "25", 10);
     if (isNaN(s) || s < MIN_CUSTOM) return 25;
     return Math.min(MAX_CUSTOM, s);
   });

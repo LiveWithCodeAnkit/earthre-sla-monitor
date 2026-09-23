@@ -13,9 +13,13 @@ export interface UploadResult {
   rejected_sample: string[];
 }
 
-export async function uploadCSV(file: File): Promise<UploadResult> {
+export async function uploadCSV(
+  file: File,
+  opts?: { replace?: boolean }
+): Promise<UploadResult> {
   const form = new FormData();
   form.append("file", file);
+  form.append("replace", opts?.replace === false ? "false" : "true");
 
   const res = await fetch(`${WORKER_URL}/api/upload`, {
     method: "POST",
@@ -46,7 +50,10 @@ export interface ServiceStats {
   total_slots: number;
   sla_slots_down: number;
   uptime_pct: number;
+  monthly_uptime_pct: number;
+  sla_month: string | null;
   sla_compliant: boolean;
+  sla_months: { month: string; uptime_pct: number; compliant: boolean }[];
   error_breakdown: Record<string, number>;
   p50_latency_ms: number | null;
   p95_latency_ms: number | null;

@@ -81,7 +81,11 @@ export default function ServiceCard({ stats }: Props) {
                   ? "bg-emerald-500 dark:bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.4)]"
                   : "bg-rose-500 dark:bg-rose-400 shadow-[0_0_8px_rgba(244,63,94,0.4)]"
               }`}
-              title={compliant ? "SLA 99.9% Met" : "SLA Target Breached"}
+              title={
+                compliant
+                  ? `Monthly SLA 99.9% met (${stats.sla_month ?? "UTC month"})`
+                  : `Monthly SLA breached (${stats.sla_month ?? "UTC month"})`
+              }
             />
             <h3 className="font-bold text-slate-900 dark:text-white text-sm truncate tracking-tight">
               {stats.service_name}
@@ -97,14 +101,21 @@ export default function ServiceCard({ stats }: Props) {
               : "bg-rose-50 dark:bg-rose-500/10 text-rose-800 dark:text-rose-300 border-rose-200 dark:border-rose-500/30"
           }`}
         >
-          {compliant ? "✓ Met 99.9%" : "✕ SLA Breach"}
+          {compliant ? "✓ Monthly 99.9%" : "✕ Monthly breach"}
         </span>
       </div>
 
       {/* Uptime Metric & Target Progress Bar */}
       <div>
         <div className="flex justify-between items-baseline mb-1.5">
-          <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Availability</span>
+          <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
+            Period availability
+            {stats.sla_month && (
+              <span className="ml-1.5 font-normal text-slate-400">
+                · monthly {stats.monthly_uptime_pct.toFixed(3)}%
+              </span>
+            )}
+          </span>
           <span
             className={`text-sm font-extrabold font-mono tabular-nums ${
               compliant ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"

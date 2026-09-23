@@ -129,35 +129,87 @@ describe("Incident detection — consecutive 5xx run", () => {
     expect(svc.incidents[0].duration_min).toBe(45); // 3 slots × 15 min
   });
 
-  it("detects two separate incidents separated by an up slot", async () => {
+  it("merges nearby downs (≤30 min gap) into one seed-log incident", async () => {
+    // Mirrors dataset_incident_log.json: injected windows include up slots.
     const rows: MockRow[] = [
-      slot(ts(0, 0), 500, null),  // incident 1 (1 slot)
-      slot(ts(0, 1), 200, 100),   // up — separates them
-      slot(ts(0, 2), 503, null),  // incident 2 start
-      slot(ts(0, 3), 502, null),  // incident 2 end
-    ];
-
-    const result = await queryStats(makeMockD1(rows), {});
-    const svc = result.services[0];
-
-    expect(svc.incident_count).toBe(2);
-    expect(svc.incidents[0].duration_min).toBe(15); // 1 slot
-    expect(svc.incidents[1].duration_min).toBe(30); // 2 slots
-  });
-
-  it("flushes an open incident at the end of the range", async () => {
-    // Incident runs all the way to the last row — must still be recorded.
-    const rows: MockRow[] = [
-      slot(ts(0, 0), 200, 100),
-      slot(ts(0, 1), 500, null),
-      slot(ts(0, 2), 500, null),
+      slot(ts(0, 0), 500, null),
+      slot(ts(0, 1), 200, 100), // 15-min up — still same burst
+      slot(ts(0, 2), 503, null),
+      slot(ts(0, 3), 502, null),
     ];
 
     const result = await queryStats(makeMockD1(rows), {});
     const svc = result.services[0];
 
     expect(svc.incident_count).toBe(1);
-    expect(svc.incidents[0].duration_min).toBe(30);
+    expect(svc.incidents[0].start).toBe(ts(0, 0));
+    expect(svc.incidents[0].end).toBe(ts(0, 3));
+  });
+
+  it("does not count isolated single-slot blips as incidents", async () => {
+    const rows: MockRow[] = [
+      slot(ts(0, 0), 200, 100),
+      slot(ts(0, 1), 500, null), // lone blip
+      slot(ts(0, 2), 200, 100),
+      slot(ts(0, 8), 503, null), // far from the first blip
+      slot(ts(0, 9), 200, 100),
+    ];
+
+    const result = await queryStats(makeMockD1(rows), {});
+    expect(result.services[0].incident_count).toBe(0);
+  });
+
+  it("keeps two bursts that are hours apart as separate incidents", async () => {
+    const rows: MockRow[] = [
+      slot(ts(0, 0), 500, null),
+      slot(ts(0, 1), 500, null),
+      slot(ts(0, 2), 500, null),
+      slot(ts(0, 3), 200, 100),
+      slot(ts(8, 0), 502, null),
+      slot(ts(8, 1), 502, null),
+      slot(ts(8, 2), 502, null),
+    ];
+
+    const result = await queryStats(makeMockD1(rows), {});
+    expect(result.services[0].incident_count).toBe(2);
+  });
+
+  it("flushes an open incident at the end of the range", async () => {
+    const rows: MockRow[] = [
+      slot(ts(0, 0), 200, 100),
+      slot(ts(0, 1), 500, null),
+      slot(ts(0, 2), 500, null),
+      slot(ts(0, 3), 500, null),
+    ];
+
+    const result = await queryStats(makeMockD1(rows), {});
+    const svc = result.services[0];
+
+    expect(svc.incident_count).toBe(1);
+    expect(svc.incidents[0].duration_min).toBe(45);
+  });
+});
+
+describe("Monthly SLA flag vs date filter", () => {
+  it("keeps the 99.9% flag on the calendar month, not a single good day", async () => {
+    const rows: MockRow[] = [
+      slot("2025-05-01T00:00:00.000Z", 500, null),
+      slot("2025-05-01T00:15:00.000Z", 500, null),
+      slot("2025-05-13T12:00:00.000Z", 200, 100),
+      slot("2025-05-13T12:15:00.000Z", 200, 100),
+    ];
+
+    const goodDay = await queryStats(makeMockD1(rows), {
+      from: "2025-05-13T00:00:00.000Z",
+      to: "2025-05-13T23:59:59.999Z",
+    });
+    const svc = goodDay.services[0];
+
+    expect(svc.uptime_pct).toBe(100);
+    expect(svc.monthly_uptime_pct).toBe(50);
+    expect(svc.sla_compliant).toBe(false);
+    expect(svc.sla_month).toBe("2025-05");
+    expect(goodDay.overall.sla_compliant).toBe(false);
   });
 });
 

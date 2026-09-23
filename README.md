@@ -35,7 +35,7 @@ CSV file
          ├─ Collapsible stats panel
          │    per-service: uptime %, SLA flag, error breakdown,
          │    p50/p95 latency, incidents, last-check freshness
-         └─ Logs table (filterable, paginated, 50 rows/page)
+         └─ Logs table (filterable, paginated; default 25 rows/page, max 200)
 ```
 
 ### Why these choices
@@ -89,7 +89,9 @@ Some files use Windows-style `\r\n`, others use Unix `\n`. The parser normalises
 
 ## Assumptions
 
-**Incident definition** — a consecutive run of 15-minute slots where at least one agent reported non-2xx (including 999). Duration = slot count × 15 minutes. A single up slot between two down runs starts a new incident. This definition matches the slot structure in `dataset_incident_log.json`.
+**Incident definition** — `dataset_incident_log.json` lists injected outage *windows*, not every failed probe. Counting every consecutive non-2xx streak produced 19 "incidents" on `svc-reports` where the log records 1 (the May 13 16:00–17:15 window is one burst with up slots inside it). An incident is therefore a cluster of down slots at most 30 minutes apart, kept only if it has ≥ 3 down slots. Isolated 1-slot 5xx/999 blips stay in the error breakdown and in period uptime; they are not billed as incidents.
+
+**SLA flag is monthly** — the spec's 99.9% credit is a *calendar-month* number. The dashboard date filter still drives period uptime, logs, and incident list; the green/red 99.9% badge uses UTC month availability so picking one healthy day cannot hide a monthly breach.
 
 **4xx codes absent** — zero 4xx codes appear in this dataset. If they did, I would exclude them from the "down" calculation: a `4xx` response means the client made a bad request, not that the service is unavailable. The code is written to count only non-200 codes as down; if 4xx codes appeared they would currently be counted as failures. This is noted as a known gap.
 
@@ -117,7 +119,7 @@ Some files use Windows-style `\r\n`, others use Unix `\n`. The parser normalises
 | `split('\n')` | ~2 ms |
 | Field parse loop (15 k × `split(',')`) | ~17 ms |
 | **Total parse-only CPU** | **~20 ms** |
-| D1 batch inserts (157 batches × ~127 ms each) | ~20 s wall-clock |
+| D1 batch inserts (~15 multi-row batches) | I/O-bound, not CPU |
 
 The D1 I/O time (~20 s) is **not counted against the 10 ms CPU budget** — Cloudflare explicitly excludes I/O wait from CPU time measurement.
 
@@ -241,9 +243,9 @@ cd frontend && npm run build
 
 2. **Latency time-series chart** — a line chart of p50/p95 latency over the selected date range per service would make degradations visible at a glance. Recharts or Chart.js would drop in cleanly.
 
-3. **Re-upload / dedup UX** — currently re-uploading the same file silently skips duplicates via `INSERT OR IGNORE`. It would be better to detect the re-upload (by filename + row count match in the `uploads` table) and give the user an explicit "already ingested — skip or replace?" prompt.
+3. **Append-mode analytics** — upload defaults to replace so a second CSV does not mix into the first. A true multi-file history (per-upload partitions) would need a `batch_id` column.
 
-4. **Rate limiting on POST /api/upload** — the upload endpoint does significant CPU work (CSV parsing) and up to 157 D1 batch calls per request. Cloudflare Rate Limiting (free up to 100 k requests/month) would prevent abuse.
+4. **Rate limiting on POST /api/upload** — the upload endpoint does significant CPU work (CSV parsing) plus a handful of multi-row D1 batch calls. Cloudflare Rate Limiting (free up to 100 k requests/month) would prevent abuse.
 
 5. **Streaming CSV parse** — if files grow beyond ~5 MB, the current approach (load entire file into a string, then parse) could hit the Worker's 128 MB memory limit. A streaming line-by-line parser would remove that ceiling and also bring parse CPU below the 10 ms free-tier budget for any file size.
 

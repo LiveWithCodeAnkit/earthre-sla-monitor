@@ -1,7 +1,7 @@
 import { useRef, useState, type DragEvent, type ChangeEvent, type MouseEvent } from "react";
 
 interface Props {
-  onUpload: (file: File) => void;
+  onUpload: (file: File, replace: boolean) => void;
   loading: boolean;
 }
 
@@ -27,6 +27,7 @@ export default function UploadForm({ onUpload, loading }: Props) {
   const [dragging, setDragging] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [replaceExisting, setReplaceExisting] = useState(true);
 
   function acceptFile(file: File | undefined) {
     if (!file) return;
@@ -71,7 +72,7 @@ export default function UploadForm({ onUpload, loading }: Props) {
 
   function handleSubmit() {
     if (!selectedFile || loading) return;
-    onUpload(selectedFile);
+    onUpload(selectedFile, replaceExisting);
   }
 
   return (
@@ -165,6 +166,20 @@ export default function UploadForm({ onUpload, loading }: Props) {
           <span>{localError}</span>
         </div>
       )}
+
+      <label className="flex items-start gap-2.5 text-xs text-slate-600 dark:text-slate-400 cursor-pointer select-none">
+        <input
+          type="checkbox"
+          className="mt-0.5 rounded border-slate-400 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500"
+          checked={replaceExisting}
+          disabled={loading}
+          onChange={(e) => setReplaceExisting(e.target.checked)}
+        />
+        <span>
+          <span className="font-semibold text-slate-800 dark:text-slate-200">Replace existing data</span>
+          {" — "}clears D1 before ingest so a second CSV does not mix with the first.
+        </span>
+      </label>
 
       {/* Ingest Action Button */}
       <button

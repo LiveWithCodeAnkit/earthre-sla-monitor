@@ -7,13 +7,13 @@
  *   GET  /api/stats   — aggregated SLA stats (implemented in Task 5)
  *
  * CORS:
- *   Development: allows http://localhost:5173 (Vite dev server)
- *   Production:  allows the Cloudflare Pages URL (updated in Task 9)
+ *   Development: allows http://localhost:5173 and :5174 (Vite default / fallback)
+ *   Production:  allows the Cloudflare Pages URL
  *   OPTIONS preflight is handled for all routes.
  */
 
 import { parseCSV } from "./parser";
-import { insertChecks, insertUpload, queryLogs, queryStats } from "./db";
+import { insertChecks, insertUpload, queryLogs, queryStats, replaceAllData } from "./db";
 import type { Env } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -28,7 +28,7 @@ import type { Env } from "./types";
  * and also good hygiene even without auth).
  *
  * Allowed origins:
- *   - http://localhost:5173          — Vite dev server
+ *   - http://localhost:5173 / :5174  — Vite dev server (default + next free port)
  *   - https://sla-dashboard.pages.dev — Cloudflare Pages production URL
  *   - https://*.sla-dashboard.pages.dev — Cloudflare Pages preview/branch URLs
  *     (each `wrangler pages deploy` push gets a unique subdomain like
@@ -46,7 +46,7 @@ function getCorsHeaders(origin: string | null): Record<string, string> {
   const PAGES_PROJECT = "sla-dashboard-55v";
 
   function isAllowed(o: string): boolean {
-    if (o === "http://localhost:5174") return true;
+    if (o === "http://localhost:5173" || o === "http://localhost:5174") return true;
     if (o === `https://${PAGES_PROJECT}.pages.dev`) return true;
     // Cloudflare preview URLs: https://<hash>.<project>.pages.dev
     if (o.endsWith(`.${PAGES_PROJECT}.pages.dev`) && o.startsWith("https://")) return true;
@@ -176,9 +176,18 @@ async function handleUpload(
 
   const ingestedAt = new Date().toISOString();
 
-  // --- Write to D1 ---
-  // insertChecks uses INSERT OR IGNORE + chunked batch().
-  // `skipped` = rows dropped by the UNIQUE constraint (duplicates / re-uploads).
+  // Default is replace: a second CSV must not mix into the first.
+  // Pass replace=false to append (INSERT OR IGNORE still drops exact dupes).
+  const replaceFlag = formData.get("replace");
+  const replace =
+    replaceFlag === null ||
+    replaceFlag === "" ||
+    String(replaceFlag).toLowerCase() !== "false";
+
+  if (replace) {
+    await replaceAllData(env.DB);
+  }
+
   const { inserted, skipped } = await insertChecks(env.DB, rows, ingestedAt);
 
   // Total rejected = parse-time rejections + DB-level duplicate skips.
