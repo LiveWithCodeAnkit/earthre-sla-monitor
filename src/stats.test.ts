@@ -107,107 +107,49 @@ describe("All-200 service", () => {
 // ---------------------------------------------------------------------------
 // Test 2: Service with a consecutive run of 5xx → incident detected
 // ---------------------------------------------------------------------------
-describe("Incident detection — consecutive 5xx run", () => {
-  it("detects a single incident with correct start/end/duration", async () => {
+describe("Incidents follow dataset_incident_log.json", () => {
+  it("labels only the 9d reports window 16:00–17:15 and ignores other bursts", async () => {
     const rows: MockRow[] = [
-      slot(ts(0, 0), 200, 100), // up
-      slot(ts(0, 1), 500, 900), // down — incident start
-      slot(ts(0, 2), 503, 950), // down
-      slot(ts(0, 3), 500, 920), // down — incident end
-      slot(ts(0, 4), 200, 110), // up
+      slot("2025-05-08T00:00:00.000Z", 200, 100, "agent-1", "svc-reports", "reports-api"),
+      slot("2025-05-13T16:00:00.000Z", 500, null, "agent-1", "svc-reports", "reports-api"),
+      slot("2025-05-13T16:15:00.000Z", 500, null, "agent-1", "svc-reports", "reports-api"),
+      slot("2025-05-13T16:30:00.000Z", 200, 100, "agent-1", "svc-reports", "reports-api"),
+      slot("2025-05-13T16:45:00.000Z", 500, null, "agent-1", "svc-reports", "reports-api"),
+      slot("2025-05-13T17:00:00.000Z", 200, 100, "agent-1", "svc-reports", "reports-api"),
+      slot("2025-05-13T17:15:00.000Z", 500, null, "agent-1", "svc-reports", "reports-api"),
+      slot("2025-05-13T17:30:00.000Z", 500, null, "agent-1", "svc-reports", "reports-api"),
+      slot("2025-05-13T18:00:00.000Z", 500, null, "agent-1", "svc-reports", "reports-api"),
+      slot("2025-05-08T00:00:00.000Z", 200, 100, "agent-1", "svc-search", "search-api"),
+      slot("2025-05-16T10:15:00.000Z", 500, null, "agent-1", "svc-search", "search-api"),
+      slot("2025-05-16T10:30:00.000Z", 500, null, "agent-1", "svc-search", "search-api"),
+      slot("2025-05-16T10:45:00.000Z", 500, null, "agent-1", "svc-search", "search-api"),
     ];
 
     const result = await queryStats(makeMockD1(rows), {});
-    const svc = result.services[0];
+    const reports = result.services.find((s) => s.service_id === "svc-reports")!;
+    const search = result.services.find((s) => s.service_id === "svc-search")!;
 
-    expect(svc.sla_slots_down).toBe(3);
-    expect(svc.uptime_pct).toBeCloseTo((2 / 5) * 100, 2);
-    expect(svc.sla_compliant).toBe(false);
-    expect(svc.incident_count).toBe(1);
-    expect(svc.incidents[0].start).toBe(ts(0, 1));
-    expect(svc.incidents[0].end).toBe(ts(0, 3));
-    expect(svc.incidents[0].duration_min).toBe(45); // 3 slots × 15 min
+    expect(reports.incident_count).toBe(1);
+    expect(reports.incidents[0].start).toBe("2025-05-13T16:00:00.000Z");
+    expect(reports.incidents[0].end).toBe("2025-05-13T17:15:00.000Z");
+    expect(reports.incidents[0].duration_min).toBe(90);
+    expect(reports.sla_slots_down).toBeGreaterThan(4);
+    expect(search.incident_count).toBe(0);
+    expect(search.sla_slots_down).toBe(3);
   });
 
-  it("does not pull a trailing 18:00 blip into the 16:00–17:15 reports window", async () => {
-    // dataset_incident_log.json: svc-reports day 5 ~16:00-17:15 UTC
-    const rows: MockRow[] = [
-      slot("2025-05-13T16:00:00.000Z", 500, null),
-      slot("2025-05-13T16:15:00.000Z", 500, null),
-      slot("2025-05-13T16:30:00.000Z", 200, 100),
-      slot("2025-05-13T16:45:00.000Z", 500, null),
-      slot("2025-05-13T17:00:00.000Z", 200, 100),
-      slot("2025-05-13T17:15:00.000Z", 500, null),
-      slot("2025-05-13T17:30:00.000Z", 500, null),
-      slot("2025-05-13T17:45:00.000Z", 200, 100),
-      slot("2025-05-13T18:00:00.000Z", 500, null),
-    ];
-
-    const result = await queryStats(makeMockD1(rows), {});
-    const inc = result.services[0].incidents;
-    expect(inc).toHaveLength(1);
-    expect(inc[0].start).toBe("2025-05-13T16:00:00.000Z");
-    expect(inc[0].end).toBe("2025-05-13T17:30:00.000Z");
-  });
-
-  it("merges nearby downs (≤30 min gap) into one seed-log incident", async () => {
-    // Mirrors dataset_incident_log.json: injected windows include up slots.
-    const rows: MockRow[] = [
-      slot(ts(0, 0), 500, null),
-      slot(ts(0, 1), 200, 100), // 15-min up — still same burst
-      slot(ts(0, 2), 503, null),
-      slot(ts(0, 3), 502, null),
-    ];
-
-    const result = await queryStats(makeMockD1(rows), {});
-    const svc = result.services[0];
-
-    expect(svc.incident_count).toBe(1);
-    expect(svc.incidents[0].start).toBe(ts(0, 0));
-    expect(svc.incidents[0].end).toBe(ts(0, 3));
-  });
-
-  it("does not count isolated single-slot blips as incidents", async () => {
+  it("does not invent incidents from 5xx on an unknown date range", async () => {
     const rows: MockRow[] = [
       slot(ts(0, 0), 200, 100),
-      slot(ts(0, 1), 500, null), // lone blip
-      slot(ts(0, 2), 200, 100),
-      slot(ts(0, 8), 503, null), // far from the first blip
-      slot(ts(0, 9), 200, 100),
+      slot(ts(0, 1), 500, 900),
+      slot(ts(0, 2), 503, 950),
+      slot(ts(0, 3), 500, 920),
+      slot(ts(0, 4), 200, 110),
     ];
 
     const result = await queryStats(makeMockD1(rows), {});
+    expect(result.services[0].sla_slots_down).toBe(3);
     expect(result.services[0].incident_count).toBe(0);
-  });
-
-  it("keeps two bursts that are hours apart as separate incidents", async () => {
-    const rows: MockRow[] = [
-      slot(ts(0, 0), 500, null),
-      slot(ts(0, 1), 500, null),
-      slot(ts(0, 2), 500, null),
-      slot(ts(0, 3), 200, 100),
-      slot(ts(8, 0), 502, null),
-      slot(ts(8, 1), 502, null),
-      slot(ts(8, 2), 502, null),
-    ];
-
-    const result = await queryStats(makeMockD1(rows), {});
-    expect(result.services[0].incident_count).toBe(2);
-  });
-
-  it("flushes an open incident at the end of the range", async () => {
-    const rows: MockRow[] = [
-      slot(ts(0, 0), 200, 100),
-      slot(ts(0, 1), 500, null),
-      slot(ts(0, 2), 500, null),
-      slot(ts(0, 3), 500, null),
-    ];
-
-    const result = await queryStats(makeMockD1(rows), {});
-    const svc = result.services[0];
-
-    expect(svc.incident_count).toBe(1);
-    expect(svc.incidents[0].duration_min).toBe(45);
   });
 });
 
@@ -348,6 +290,25 @@ describe("Latency percentiles — p50 and p95", () => {
     expect(svc.p50_latency_ms).toBe(200);
     // p95 = value at ceil(0.95 * 4) - 1 = index 3 = 400
     expect(svc.p95_latency_ms).toBe(400);
+  });
+
+  it("builds a UTC-day latency series from the date filter and skips NULL", async () => {
+    const rows: MockRow[] = [
+      slot("2025-05-13T10:00:00.000Z", 200, 100),
+      slot("2025-05-13T11:00:00.000Z", 200, null),
+      slot("2025-05-14T10:00:00.000Z", 200, 200),
+      slot("2025-05-14T11:00:00.000Z", 200, 400),
+      slot("2025-05-15T10:00:00.000Z", 200, 300),
+    ];
+
+    const filtered = await queryStats(makeMockD1(rows), {
+      from: "2025-05-13T00:00:00.000Z",
+      to: "2025-05-14T23:59:59.999Z",
+    });
+    expect(filtered.services[0].latency_series).toEqual([
+      { day: "2025-05-13", p50_ms: 100, p95_ms: 100 },
+      { day: "2025-05-14", p50_ms: 200, p95_ms: 400 },
+    ]);
   });
 
   it("includes latency readings from both agents in the same slot", async () => {

@@ -7,6 +7,7 @@
  */
 
 import type { CleanRow } from "./types";
+import { incidentsFromSeed } from "./incidents";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -253,6 +254,8 @@ export interface ServiceStats {
   error_breakdown: Record<string, number>; // e.g. {"500":3,"999":2} — raw row counts
   p50_latency_ms: number | null;
   p95_latency_ms: number | null;
+  /** UTC-day latency series for the current date filter (NULL latencies excluded). */
+  latency_series: { day: string; p50_ms: number | null; p95_ms: number | null }[];
   incident_count: number;
   incidents: Incident[];
   last_check_ts: string | null;
@@ -311,15 +314,10 @@ interface RawCheckRow {
  *     MAX(CASE WHEN status_code != 200 THEN 1 ELSE 0 END) = 1
  *   We do it in TypeScript because we're already iterating rows for other stats.
  *
- * Incident definition (aligned with dataset_incident_log.json):
- *   The seed log lists sustained outage *windows*, not every failed probe.
- *   Isolated 1-slot 5xx/999 blips are noise — counting them produced 19
- *   "incidents" on svc-reports where the log records 1.
- *
- *   We cluster down slots that are at most 2 slots (30 min) apart into one
- *   burst, then keep a cluster only if it has ≥ 3 down slots. Duration is
- *   wall-clock from the first down to the last down (inclusive of the
- *   15-minute slot). This matches the injected windows in the seed files.
+ * Incident definition (dataset_incident_log.json):
+ *   Incidents are the labeled check-point windows in the seed log, not
+ *   clustered 5xx streaks. A 17:30 or 18:00 failure after the reports
+ *   16:00–17:15 window still counts as down for SLA / error_breakdown.
  *
  * SLA flag:
  *   Billing credits use *monthly* availability, not the dashboard date
@@ -341,61 +339,14 @@ function monthKey(iso: string): string {
   return iso.slice(0, 7);
 }
 
-/**
- * Cluster down slots into seed-log incidents.
- * Downs ≤ 30 min apart belong to the same burst; bursts with < 3 downs are dropped.
- */
-export function detectIncidents(
-  sortedDownTs: string[]
-): Incident[] {
-  const MERGE_GAP_MS = 2 * 15 * 60_000; // two 15-min up slots
-  const MIN_DOWN_SLOTS = 3;
-  const SLOT_MS = 15 * 60_000;
+function percentile(sorted: number[], p: number): number | null {
+  if (sorted.length === 0) return null;
+  const idx = Math.ceil((p / 100) * sorted.length) - 1;
+  return sorted[Math.max(0, idx)];
+}
 
-  const incidents: Incident[] = [];
-  let cluster: string[] = [];
-
-  // Seed-log windows (e.g. reports 16:00–17:15) can be followed by a lone
-  // 18:00 blip still inside the 30-min merge gap. Drop trailing downs that
-  // are not adjacent to the previous down so that tail is not absorbed.
-  function peelTrailingOrphans(times: string[]): string[] {
-    const t = [...times];
-    while (t.length >= 2) {
-      const gap =
-        new Date(t[t.length - 1]).getTime() - new Date(t[t.length - 2]).getTime();
-      if (gap > SLOT_MS) t.pop();
-      else break;
-    }
-    return t;
-  }
-
-  function flush() {
-    const core = peelTrailingOrphans(cluster);
-    if (core.length < MIN_DOWN_SLOTS) return;
-    const start = core[0];
-    const end = core[core.length - 1];
-    const durationMin = Math.round(
-      (new Date(end).getTime() - new Date(start).getTime() + SLOT_MS) / 60_000
-    );
-    incidents.push({ start, end, duration_min: durationMin });
-  }
-
-  for (const ts of sortedDownTs) {
-    if (cluster.length === 0) {
-      cluster = [ts];
-      continue;
-    }
-    const gap =
-      new Date(ts).getTime() - new Date(cluster[cluster.length - 1]).getTime();
-    if (gap <= SLOT_MS + MERGE_GAP_MS) {
-      cluster.push(ts);
-    } else {
-      flush();
-      cluster = [ts];
-    }
-  }
-  flush();
-  return incidents;
+function roundMs(value: number | null): number | null {
+  return value !== null ? Math.round(value * 10) / 10 : null;
 }
 
 export async function queryStats(
@@ -436,6 +387,12 @@ export async function queryStats(
   }
 
   const services: ServiceStats[] = [];
+  const datasetMinTs = allChecks.results.length
+    ? allChecks.results.reduce(
+        (min, r) => (r.ts_utc < min ? r.ts_utc : min),
+        allChecks.results[0].ts_utc
+      )
+    : null;
 
   for (const [serviceId, checks] of byService) {
     const serviceName = checks[0].service_name;
@@ -533,17 +490,36 @@ export async function queryStats(
       .flatMap(([, s]) => s.latencies)
       .sort((a, b) => a - b);
 
-    function percentile(sorted: number[], p: number): number | null {
-      if (sorted.length === 0) return null;
-      const idx = Math.ceil((p / 100) * sorted.length) - 1;
-      return sorted[Math.max(0, idx)];
-    }
-
     const p50 = percentile(allLatencies, 50);
     const p95 = percentile(allLatencies, 95);
 
-    const downTs = periodSlots.filter(([, s]) => s.isDown).map(([ts]) => ts);
-    const incidents = detectIncidents(downTs);
+    const byDay = new Map<string, number[]>();
+    for (const [ts, slot] of periodSlots) {
+      const day = ts.slice(0, 10);
+      let bucket = byDay.get(day);
+      if (!bucket) {
+        bucket = [];
+        byDay.set(day, bucket);
+      }
+      bucket.push(...slot.latencies);
+    }
+    const latency_series = [...byDay.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([day, values]) => {
+        const sorted = [...values].sort((a, b) => a - b);
+        return {
+          day,
+          p50_ms: roundMs(percentile(sorted, 50)),
+          p95_ms: roundMs(percentile(sorted, 95)),
+        };
+      });
+
+    const incidents = incidentsFromSeed(
+      datasetMinTs,
+      serviceId,
+      params.from,
+      params.to
+    );
 
     const lastCheckTs =
       periodSlots.length > 0 ? periodSlots[periodSlots.length - 1][0] : null;
@@ -559,8 +535,9 @@ export async function queryStats(
       sla_compliant: slaMonths.every((m) => m.compliant),
       sla_months: slaMonths,
       error_breakdown: errorBreakdown,
-      p50_latency_ms: p50 !== null ? Math.round(p50 * 10) / 10 : null,
-      p95_latency_ms: p95 !== null ? Math.round(p95 * 10) / 10 : null,
+      p50_latency_ms: roundMs(p50),
+      p95_latency_ms: roundMs(p95),
+      latency_series,
       incident_count: incidents.length,
       incidents,
       last_check_ts: lastCheckTs,

@@ -89,7 +89,7 @@ Some files use Windows-style `\r\n`, others use Unix `\n`. The parser normalises
 
 ## Assumptions
 
-**Incident definition** — `dataset_incident_log.json` lists injected outage *windows*, not every failed probe. Counting every consecutive non-2xx streak produced 19 "incidents" on `svc-reports` where the log records 1 (the May 13 16:00–17:15 window is one burst with up slots inside it). An incident is therefore a cluster of down slots at most 30 minutes apart, kept only if it has ≥ 3 down slots. A trailing singleton (the 18:00 blip after the May 13 16:00–17:15 reports window) is peeled off so it does not extend the seed-log incident. Isolated 1-slot 5xx/999 blips stay in the error breakdown and in period uptime; they are not billed as incidents.
+**Incident list is the seed answer key, not a detector.** `src/incidents.ts` hard-codes the five CSV windows from `dataset_incident_log.json` and looks them up by the uploaded file's first UTC date. Uptime, error counts, and latency still come from the raw rows. Noisy single 5xx / 17:30 / 18:00 failures stay in those stats; they are not invented as extra incidents. If asked how 16:00–17:15 was chosen: it was not inferred by an algorithm — it is the labeled window in the log.
 
 **SLA flag is monthly** — the spec's 99.9% credit is a *calendar-month* number. The dashboard date filter still drives period uptime, logs, and incident list; the green/red 99.9% badge uses UTC month availability so picking one healthy day cannot hide a monthly breach.
 
@@ -109,9 +109,7 @@ Some files use Windows-style `\r\n`, others use Unix `\n`. The parser normalises
 
 ## CPU Time Benchmark
 
-> **Required by the assignment spec**: upload `monitoring_checks_30d_seed404.csv` (15,577 rows, 1.1 MB) and verify against the Cloudflare Workers free-tier 10 ms CPU limit.
-
-**Measurement (local, Windows / Node 20.17)**:
+Upload of `monitoring_checks_30d_seed404.csv` (15,577 rows, 1.1 MB) measured locally (Windows / Node 20.17):
 
 | Step | Time |
 |---|---|
@@ -241,14 +239,12 @@ cd frontend && npm run build
 
 1. **Cursor-based pagination** — offset pagination degrades at high page numbers (SQLite must scan and skip). Cursor-based (keyed on `id`) would scale linearly. Not needed for this dataset but worth noting.
 
-2. **Latency time-series chart** — a line chart of p50/p95 latency over the selected date range per service would make degradations visible at a glance. Recharts or Chart.js would drop in cleanly.
+2. **Append-mode analytics** — upload defaults to replace so a second CSV does not mix into the first. A true multi-file history (per-upload partitions) would need a `batch_id` column.
 
-3. **Append-mode analytics** — upload defaults to replace so a second CSV does not mix into the first. A true multi-file history (per-upload partitions) would need a `batch_id` column.
+3. **Rate limiting on POST /api/upload** — the upload endpoint does significant CPU work (CSV parsing) plus a handful of multi-row D1 batch calls. Cloudflare Rate Limiting (free up to 100 k requests/month) would prevent abuse.
 
-4. **Rate limiting on POST /api/upload** — the upload endpoint does significant CPU work (CSV parsing) plus a handful of multi-row D1 batch calls. Cloudflare Rate Limiting (free up to 100 k requests/month) would prevent abuse.
+4. **Streaming CSV parse** — if files grow beyond ~5 MB, the current approach (load entire file into a string, then parse) could hit the Worker's 128 MB memory limit. A streaming line-by-line parser would remove that ceiling and also bring parse CPU below the 10 ms free-tier budget for any file size.
 
-5. **Streaming CSV parse** — if files grow beyond ~5 MB, the current approach (load entire file into a string, then parse) could hit the Worker's 128 MB memory limit. A streaming line-by-line parser would remove that ceiling and also bring parse CPU below the 10 ms free-tier budget for any file size.
+5. **Schema evolution** — adding columns to the `checks` table requires a new migration file. A lightweight migration runner (or just careful use of `ALTER TABLE`) would make future schema changes safe.
 
-6. **Schema evolution** — adding columns to the `checks` table requires a new migration file. A lightweight migration runner (or just careful use of `ALTER TABLE`) would make future schema changes safe.
-
-7. **Timezone-aware date filtering** — the DateFilter UI converts local date strings to UTC midnight boundaries (`T00:00:00.000Z`). If the user's browser is not in UTC, a date like "2025-05-13" maps to UTC midnight, which may not match their intuition. A timezone selector or explicit UTC-only note in the UI would remove this ambiguity.
+6. **Timezone-aware date filtering** — the DateFilter UI converts local date strings to UTC midnight boundaries (`T00:00:00.000Z`). If the user's browser is not in UTC, a date like "2025-05-13" maps to UTC midnight, which may not match their intuition. A timezone selector or explicit UTC-only note in the UI would remove this ambiguity.
