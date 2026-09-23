@@ -57,6 +57,7 @@ export interface ServiceStats {
   error_breakdown: Record<string, number>;
   p50_latency_ms: number | null;
   p95_latency_ms: number | null;
+  latency_series: { day: string; p50_ms: number | null; p95_ms: number | null }[];
   incident_count: number;
   incidents: Incident[];
   last_check_ts: string | null;

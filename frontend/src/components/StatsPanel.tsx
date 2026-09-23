@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { StatsResult } from "../api";
 import ServiceCard from "./ServiceCard";
+import LatencyChart from "./LatencyChart";
 
 interface Props {
   stats: StatsResult | null;
@@ -87,7 +88,7 @@ export default function StatsPanel({ stats, loading }: Props) {
             <Kpi
               value={String(incidentTotal)}
               label="Total Outage Incidents"
-              sublabel="Sustained bursts (≥3 down slots)"
+              sublabel="Labeled windows from the seed incident log"
               accent={incidentTotal === 0 ? "ok" : "warn"}
             />
           </div>
@@ -104,6 +105,8 @@ export default function StatsPanel({ stats, loading }: Props) {
             </h3>
             <span className="text-[11px] text-slate-500 font-medium">SLA Target: 99.900%</span>
           </div>
+
+          {stats && stats.services.length > 0 && <LatencyChart services={stats.services} />}
 
           {loading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5">
