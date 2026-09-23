@@ -129,6 +129,27 @@ describe("Incident detection — consecutive 5xx run", () => {
     expect(svc.incidents[0].duration_min).toBe(45); // 3 slots × 15 min
   });
 
+  it("does not pull a trailing 18:00 blip into the 16:00–17:15 reports window", async () => {
+    // dataset_incident_log.json: svc-reports day 5 ~16:00-17:15 UTC
+    const rows: MockRow[] = [
+      slot("2025-05-13T16:00:00.000Z", 500, null),
+      slot("2025-05-13T16:15:00.000Z", 500, null),
+      slot("2025-05-13T16:30:00.000Z", 200, 100),
+      slot("2025-05-13T16:45:00.000Z", 500, null),
+      slot("2025-05-13T17:00:00.000Z", 200, 100),
+      slot("2025-05-13T17:15:00.000Z", 500, null),
+      slot("2025-05-13T17:30:00.000Z", 500, null),
+      slot("2025-05-13T17:45:00.000Z", 200, 100),
+      slot("2025-05-13T18:00:00.000Z", 500, null),
+    ];
+
+    const result = await queryStats(makeMockD1(rows), {});
+    const inc = result.services[0].incidents;
+    expect(inc).toHaveLength(1);
+    expect(inc[0].start).toBe("2025-05-13T16:00:00.000Z");
+    expect(inc[0].end).toBe("2025-05-13T17:30:00.000Z");
+  });
+
   it("merges nearby downs (≤30 min gap) into one seed-log incident", async () => {
     // Mirrors dataset_incident_log.json: injected windows include up slots.
     const rows: MockRow[] = [

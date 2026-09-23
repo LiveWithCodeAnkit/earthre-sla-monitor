@@ -89,7 +89,7 @@ Some files use Windows-style `\r\n`, others use Unix `\n`. The parser normalises
 
 ## Assumptions
 
-**Incident definition** — `dataset_incident_log.json` lists injected outage *windows*, not every failed probe. Counting every consecutive non-2xx streak produced 19 "incidents" on `svc-reports` where the log records 1 (the May 13 16:00–17:15 window is one burst with up slots inside it). An incident is therefore a cluster of down slots at most 30 minutes apart, kept only if it has ≥ 3 down slots. Isolated 1-slot 5xx/999 blips stay in the error breakdown and in period uptime; they are not billed as incidents.
+**Incident definition** — `dataset_incident_log.json` lists injected outage *windows*, not every failed probe. Counting every consecutive non-2xx streak produced 19 "incidents" on `svc-reports` where the log records 1 (the May 13 16:00–17:15 window is one burst with up slots inside it). An incident is therefore a cluster of down slots at most 30 minutes apart, kept only if it has ≥ 3 down slots. A trailing singleton (the 18:00 blip after the May 13 16:00–17:15 reports window) is peeled off so it does not extend the seed-log incident. Isolated 1-slot 5xx/999 blips stay in the error breakdown and in period uptime; they are not billed as incidents.
 
 **SLA flag is monthly** — the spec's 99.9% credit is a *calendar-month* number. The dashboard date filter still drives period uptime, logs, and incident list; the green/red 99.9% badge uses UTC month availability so picking one healthy day cannot hide a monthly breach.
 

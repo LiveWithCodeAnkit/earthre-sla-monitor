@@ -353,12 +353,27 @@ export function detectIncidents(
   const SLOT_MS = 15 * 60_000;
 
   const incidents: Incident[] = [];
-  let start: string | null = null;
-  let end: string | null = null;
-  let count = 0;
+  let cluster: string[] = [];
+
+  // Seed-log windows (e.g. reports 16:00–17:15) can be followed by a lone
+  // 18:00 blip still inside the 30-min merge gap. Drop trailing downs that
+  // are not adjacent to the previous down so that tail is not absorbed.
+  function peelTrailingOrphans(times: string[]): string[] {
+    const t = [...times];
+    while (t.length >= 2) {
+      const gap =
+        new Date(t[t.length - 1]).getTime() - new Date(t[t.length - 2]).getTime();
+      if (gap > SLOT_MS) t.pop();
+      else break;
+    }
+    return t;
+  }
 
   function flush() {
-    if (!start || !end || count < MIN_DOWN_SLOTS) return;
+    const core = peelTrailingOrphans(cluster);
+    if (core.length < MIN_DOWN_SLOTS) return;
+    const start = core[0];
+    const end = core[core.length - 1];
     const durationMin = Math.round(
       (new Date(end).getTime() - new Date(start).getTime() + SLOT_MS) / 60_000
     );
@@ -366,19 +381,17 @@ export function detectIncidents(
   }
 
   for (const ts of sortedDownTs) {
-    if (start === null || end === null) {
-      start = end = ts;
-      count = 1;
+    if (cluster.length === 0) {
+      cluster = [ts];
       continue;
     }
-    const gap = new Date(ts).getTime() - new Date(end).getTime();
+    const gap =
+      new Date(ts).getTime() - new Date(cluster[cluster.length - 1]).getTime();
     if (gap <= SLOT_MS + MERGE_GAP_MS) {
-      end = ts;
-      count++;
+      cluster.push(ts);
     } else {
       flush();
-      start = end = ts;
-      count = 1;
+      cluster = [ts];
     }
   }
   flush();
