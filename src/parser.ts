@@ -22,6 +22,23 @@
 import type { CleanRow, ParseResult, RejectedRow } from "./types";
 
 // ---------------------------------------------------------------------------
+// Required columns — matched by name (case-insensitive), not by position.
+// This makes the parser robust to column reordering across different CSV exports.
+// ---------------------------------------------------------------------------
+const REQUIRED_COLUMNS = [
+  "service_id",
+  "service_name",
+  "timestamp",
+  "status_code",
+  "latency",
+  "latency_unit",
+  "agent",
+  "region",
+] as const;
+
+type ColName = typeof REQUIRED_COLUMNS[number];
+
+// ---------------------------------------------------------------------------
 // Timestamp normalisation
 // ---------------------------------------------------------------------------
 
@@ -136,13 +153,24 @@ function normalizeLatency(
 /**
  * Parses a raw CSV text string into cleaned rows and a list of rejected rows.
  *
+ * Column matching is by **header name** (case-insensitive), not by position.
+ * This means a CSV whose columns appear in a different order, or whose header
+ * uses mixed case (e.g. "Service_ID"), will still be parsed correctly.
+ * If any required column is absent from the header the entire parse is aborted
+ * and an error is returned via the rejected array.
+ *
+ * Required columns (any order, case-insensitive):
+ *   service_id, service_name, timestamp, status_code,
+ *   latency, latency_unit, agent, region
+ *
  * Returns:
  *   rows     — CleanRow[] ready for INSERT OR IGNORE into D1
  *   rejected — RejectedRow[] with human-readable reasons (reported back to the
  *              upload UI and stored in uploads.notes)
  *
  * What causes a row to be REJECTED (not inserted):
- *   - Fewer than 8 comma-separated fields
+ *   - Any required column missing from the header (whole-file error)
+ *   - Fewer comma-separated fields than the header has columns
  *   - Any of service_id, service_name, agent, region is empty
  *   - Unparseable timestamp
  *   - Non-numeric status_code
@@ -178,7 +206,45 @@ export function parseCSV(text: string): ParseResult {
   const rows: CleanRow[] = [];
   const rejected: RejectedRow[] = [];
 
-  // Skip header row (index 0) and blank trailing lines.
+  if (lines.length === 0 || lines[0].trim() === "") {
+    rejected.push({ raw: "", reason: "empty_file_or_missing_header" });
+    return { rows, rejected };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Build a column-name → index map from the header row.
+  // Matching is case-insensitive so "Service_ID", "service_id", "SERVICE_ID"
+  // all resolve to the same column. Trailing whitespace and BOM chars are
+  // stripped before comparison.
+  // ---------------------------------------------------------------------------
+  const headerFields = lines[0].split(",").map((f) =>
+    f.trim().toLowerCase().replace(/^\uFEFF/, "") // strip UTF-8 BOM if present
+  );
+
+  const colIndex: Partial<Record<ColName, number>> = {};
+  for (const col of REQUIRED_COLUMNS) {
+    const idx = headerFields.indexOf(col);
+    if (idx !== -1) {
+      colIndex[col] = idx;
+    }
+  }
+
+  // Check that every required column was found.
+  const missingCols = REQUIRED_COLUMNS.filter((c) => colIndex[c] === undefined);
+  if (missingCols.length > 0) {
+    rejected.push({
+      raw: lines[0],
+      reason: `missing_required_columns:${missingCols.join(",")}`,
+    });
+    return { rows, rejected };
+  }
+
+  // All required columns found — cast to the full record type now.
+  const col = colIndex as Record<ColName, number>;
+
+  // ---------------------------------------------------------------------------
+  // Parse data rows
+  // ---------------------------------------------------------------------------
   const dataLines = lines.slice(1).filter((l) => l.trim() !== "");
 
   for (const line of dataLines) {
@@ -187,25 +253,21 @@ export function parseCSV(text: string): ParseResult {
     // fields, replace this with a proper RFC 4180 parser.
     const fields = line.split(",");
 
-    // The schema has exactly 8 columns:
-    //   service_id, service_name, timestamp, status_code,
-    //   latency, latency_unit, agent, region
-    if (fields.length < 8) {
+    if (fields.length <= Math.max(...Object.values(col))) {
       rejected.push({ raw: line, reason: "too_few_fields" });
       continue;
     }
 
-    // Destructure — use index access rather than a rest spread so TypeScript
-    // keeps track that all 8 positions are addressed.
-    const rawServiceId   = fields[0];
-    const rawServiceName = fields[1];
-    const rawTimestamp   = fields[2];
-    const rawStatusCode  = fields[3];
-    const rawLatency     = fields[4];
-    const rawLatencyUnit = fields[5];
-    const rawAgent       = fields[6];
-    // field[7] may have a trailing \r if we somehow missed a CRLF; trim it.
-    const rawRegion      = fields[7];
+    // Extract by name-resolved index.
+    const rawServiceId   = fields[col.service_id];
+    const rawServiceName = fields[col.service_name];
+    const rawTimestamp   = fields[col.timestamp];
+    const rawStatusCode  = fields[col.status_code];
+    const rawLatency     = fields[col.latency];
+    const rawLatencyUnit = fields[col.latency_unit];
+    const rawAgent       = fields[col.agent];
+    // The last mapped column might have trailing \r from a CRLF file; trim it.
+    const rawRegion      = fields[col.region];
 
     // Validate required string fields.
     const service_id   = rawServiceId?.trim();

@@ -116,6 +116,10 @@ export default {
         return await handleStats(request, env, corsHeaders);
       }
 
+      if (url.pathname === "/health" && request.method === "GET") {
+        return json({ status: "ok", worker: "sla-monitor" }, 200, corsHeaders);
+      }
+
       return json({ error: "Not found" }, 404, corsHeaders);
     } catch (err) {
       // Catch-all: return a 500 with the error message rather than crashing

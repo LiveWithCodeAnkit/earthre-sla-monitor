@@ -12,15 +12,35 @@ function formatDuration(minutes: number): string {
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
-function formatRelativeTime(isoTs: string | null): string {
+/**
+ * For timestamps within the last 24 h, returns a human-readable relative string
+ * ("just now", "5m ago", "3h ago"). For older timestamps — including historical
+ * test fixtures whose data ends months in the past — returns a short absolute
+ * UTC date+time string so reviewers never see a misleading "494d ago".
+ */
+function formatProbeTime(isoTs: string | null): string {
   if (!isoTs) return "—";
-  const diff = Date.now() - new Date(isoTs).getTime();
-  const mins = Math.floor(diff / 60_000);
-  if (mins < 2) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
+  const ts = new Date(isoTs).getTime();
+  const diffMs = Date.now() - ts;
+  const diffMins = Math.floor(diffMs / 60_000);
+
+  if (diffMins < 2) return "just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+
+  // Data is older than 24 h — show absolute UTC timestamp.
+  // This avoids showing "494d ago" for historical datasets.
+  return new Date(isoTs).toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "UTC",
+    timeZoneName: "short",
+  });
 }
 
 function formatTs(isoTs: string): string {
@@ -242,7 +262,7 @@ export default function ServiceCard({ stats }: Props) {
       <div className="flex justify-between items-center text-[11px] text-slate-500 dark:text-slate-400 pt-1 border-t border-slate-200 dark:border-slate-800/80">
         <span>Latest Telemetry Probe</span>
         <span className="text-slate-700 dark:text-slate-300 font-medium font-mono" title={stats.last_check_ts ?? "No check recorded"}>
-          {formatRelativeTime(stats.last_check_ts)}
+          {formatProbeTime(stats.last_check_ts)}
         </span>
       </div>
     </article>
