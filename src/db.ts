@@ -17,6 +17,19 @@ import { incidentsFromSeed } from "./incidents";
 export const DEFAULT_PAGE_SIZE = 25;
 export const MIN_PAGE_SIZE = 5;
 export const MAX_PAGE_SIZE = 200;
+const MAX_LOG_SEARCH = 80;
+
+/** Trim / cap the logs `q` param. Empty → undefined (no extra WHERE). */
+export function normalizeLogSearch(raw?: string | null): string | undefined {
+  if (!raw) return undefined;
+  const t = raw.trim().slice(0, MAX_LOG_SEARCH);
+  return t.length > 0 ? t : undefined;
+}
+
+/** SQLite LIKE '%term%' with \, %, _ escaped (ESCAPE '\'). */
+export function likeContains(term: string): string {
+  return `%${term.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_")}%`;
+}
 
 // ---------------------------------------------------------------------------
 // Shared row types
@@ -153,6 +166,8 @@ export async function insertUpload(
  *   - from / to: inclusive UTC ISO range on ts_utc
  *   - date: shorthand for a single UTC calendar day (from=date+T00:00:00Z, to=date+T23:59:59.999Z)
  *     If both `date` and `from`/`to` are provided, `from`/`to` take precedence.
+ *   - q: case-insensitive substring on service_id, service_name, agent, region, status_code
+ *     (applies to the full filtered set, then LIMIT/OFFSET paginates).
  *
  * Pagination:
  *   - page is 1-indexed.
@@ -166,6 +181,7 @@ export async function queryLogs(
     service?: string;
     from?: string;
     to?: string;
+    q?: string;
     page?: number;
     pageSize?: number;
   }
@@ -192,6 +208,14 @@ export async function queryLogs(
   if (params.to) {
     conditions.push("ts_utc <= ?");
     bindings.push(params.to);
+  }
+  const q = normalizeLogSearch(params.q);
+  if (q) {
+    const like = likeContains(q);
+    conditions.push(
+      `(service_id LIKE ? ESCAPE '\\' OR service_name LIKE ? ESCAPE '\\' OR agent LIKE ? ESCAPE '\\' OR region LIKE ? ESCAPE '\\' OR CAST(status_code AS TEXT) LIKE ? ESCAPE '\\')`
+    );
+    bindings.push(like, like, like, like, like);
   }
 
   const where =

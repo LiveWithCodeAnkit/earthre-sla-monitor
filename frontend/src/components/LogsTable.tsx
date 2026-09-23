@@ -91,10 +91,16 @@ export default function LogsTable({ filters }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<"all" | "ok" | "5xx" | "999">("all");
   const [quickSearch, setQuickSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebouncedSearch(quickSearch.trim()), 300);
+    return () => window.clearTimeout(t);
+  }, [quickSearch]);
 
   useEffect(() => {
     setPage(1);
-  }, [filters.from, filters.to, filters.service, pageSize]);
+  }, [filters.from, filters.to, filters.service, pageSize, debouncedSearch]);
 
   useEffect(() => {
     let cancelled = false;
@@ -107,6 +113,7 @@ export default function LogsTable({ filters }: Props) {
       to: filters.to,
       page,
       pageSize,
+      q: debouncedSearch || undefined,
     })
       .then((result) => {
         if (!cancelled) setData(result);
@@ -130,7 +137,7 @@ export default function LogsTable({ filters }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [page, pageSize, filters.from, filters.to, filters.service]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [page, pageSize, filters.from, filters.to, filters.service, debouncedSearch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
   const skeletonCount = Math.min(pageSize, 12);
@@ -144,12 +151,6 @@ export default function LogsTable({ filters }: Props) {
         (row.status_code < 500 || row.status_code >= 600 || row.status_code === 999)
       )
         return false;
-      if (quickSearch.trim()) {
-        const q = quickSearch.trim().toLowerCase();
-        const hay =
-          `${row.service_id} ${row.service_name} ${row.agent} ${row.region} ${row.status_code}`.toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
       return true;
     }) ?? [];
 
@@ -294,7 +295,7 @@ export default function LogsTable({ filters }: Props) {
               type="search"
               value={quickSearch}
               onChange={(e) => setQuickSearch(e.target.value)}
-              placeholder="Search current page by service, region, agent, or status code…"
+              placeholder="Search all logs by service, region, agent, or status code…"
               className={`${inputClass} w-full pl-8 placeholder:text-slate-400 dark:placeholder:text-slate-500`}
             />
           </div>

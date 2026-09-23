@@ -249,7 +249,8 @@ async function handleLogs(
     url.searchParams.get("to") ??
     (dateParam ? `${dateParam}T23:59:59.999Z` : undefined);
 
-  const result = await queryLogs(env.DB, { service, from, to, page, pageSize });
+  const q = url.searchParams.get("q") ?? undefined;
+  const result = await queryLogs(env.DB, { service, from, to, q, page, pageSize });
   return json(result, 200, corsHeaders);
 }
 

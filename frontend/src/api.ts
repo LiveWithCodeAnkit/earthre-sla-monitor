@@ -119,12 +119,14 @@ export async function fetchLogs(params: {
   date?: string;
   page?: number;
   pageSize?: number;
+  q?: string;
 }): Promise<LogsResult> {
   const url = new URL(`${WORKER_URL}/api/logs`);
   if (params.service) url.searchParams.set("service", params.service);
   if (params.date) url.searchParams.set("date", params.date);
   if (params.from) url.searchParams.set("from", params.from);
   if (params.to) url.searchParams.set("to", params.to);
+  if (params.q) url.searchParams.set("q", params.q);
   url.searchParams.set("page", String(params.page ?? 1));
   if (params.pageSize) url.searchParams.set("pageSize", String(params.pageSize));
 
